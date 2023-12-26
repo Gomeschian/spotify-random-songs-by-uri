@@ -11,11 +11,14 @@
         margin: 20px;
       }
 
-      #feedback {
+      #feedback,
+      #console-output {
         margin-top: 20px;
         padding: 10px;
         border: 1px solid #ccc;
         display: none;
+        max-height: 200px; /* Adjust the height as needed */
+        overflow-y: auto;
       }
     </style>
   </head>
@@ -23,12 +26,14 @@
     <h1>Spotify Random Songs App</h1>
     <button onclick="addRandomSongs()">Add 100 Random Songs</button>
     <div id="feedback"></div>
+    <div id="console-output"></div>
 
     <script>
       // Spotify Web API credentials
       const clientId = "4dfa4cec758c4d7099933e46e3f097b8"; // Replace with your Spotify API client ID
       const redirectUri = "https://spotify-random-songs-by-uri.vercel.app/"; // Replace with your Spotify API redirect URI
-      const scopes = 'playlist-read-private playlist-modify-public playlist-modify-private';
+      const scopes =
+        "playlist-read-private playlist-modify-public playlist-modify-private";
 
       // Playlist information
       const playlistName = "Random URI Songs";
@@ -42,14 +47,60 @@
         window.location.replace(authUrl);
       }
 
+      // Function to validate track URIs
+      async function validateTrackURIs(trackURIs) {
+        const response = await fetch("https://api.spotify.com/v1/tracks", {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+          params: { ids: trackURIs.join(",") },
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          console.log("Data:", data);
+          const validTrackURIs = data.tracks
+            .filter((track) => track !== null)
+            .map((track) => track.uri);
+          console.log("Valid Track URIs:", validTrackURIs);
+          return validTrackURIs;
+        } else {
+          console.error("Failed to validate tracks. Status:", response.status);
+          return [];
+        }
+      }
+
+      // Function to display console output to the user
+      function displayConsoleOutput(output) {
+        const consoleOutputDiv = document.getElementById("console-output");
+        consoleOutputDiv.textContent = output;
+        consoleOutputDiv.style.display = "block";
+      }
+
       // Function to add 100 random songs
       async function addRandomSongs() {
         try {
           // Create or retrieve the playlist
           playlistId = await createOrGetPlaylist(playlistName);
 
-          // Add 100 random songs to the playlist
-          const songsAdded = await addSongsToPlaylist(playlistId, 100);
+          // Generate an array of 100 random track URIs
+          const randomTrackURIs = Array.from(
+            { length: 100 },
+            generateRandomTrackURI
+          );
+
+          // Validate track URIs before adding to the playlist
+          const validTrackURIs = await validateTrackURIs(randomTrackURIs);
+
+          console.log("Random Track URIs:", randomTrackURIs);
+          console.log("Valid Track URIs:", validTrackURIs);
+
+          // Add valid tracks to the playlist
+          const songsAdded = await addSongsToPlaylist(
+            playlistId,
+            validTrackURIs
+          );
 
           // Display feedback to the user
           displayFeedback(
@@ -90,6 +141,13 @@
             }
           );
 
+          if (!response.ok) {
+            console.error(
+              `Failed to fetch playlists. Status: ${response.status}`
+            );
+            return null;
+          }
+
           playlists = await response.json();
 
           // Check if the playlist exists in the current batch
@@ -99,6 +157,9 @@
           }
 
           offset += 50; // Move to the next batch
+
+          // Add a delay between batches to avoid rate limiting
+          await new Promise((resolve) => setTimeout(resolve, 1000)); // 1-second delay
         } while (playlists.next); // Continue until there are no more playlists
 
         return null; // Playlist not found
@@ -121,35 +182,59 @@
           }
         );
 
+        if (!response.ok) {
+          console.error(
+            `Failed to create playlist. Status: ${response.status}`
+          );
+          return null;
+        }
+
         const newPlaylist = await response.json();
         return newPlaylist;
       }
 
       // Function to add songs to the playlist
-      async function addSongsToPlaylist(playlistId, count) {
-        // Generate an array of 100 random track URIs (simplified)
-        const randomTrackURIs = Array.from(
-          { length: count },
-          generateRandomTrackURI
-        );
+      async function addSongsToPlaylist() {
+        // Generate an array of random track URIs (for testing)
+        const randomTrackURIs = generateRandomTrackURIs(100);
 
-        // Add the random track URIs to the playlist
-        const response = await fetch(
-          `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${accessToken}`,
-            },
-            body: JSON.stringify({
-              uris: randomTrackURIs,
-            }),
+        // Log the random track URIs to inspect them
+        console.log("Random Track URIs:", randomTrackURIs);
+
+        // Validate the track URIs
+        const validTrackURIs = await validateTrackURIs(randomTrackURIs);
+
+        // Log the valid track URIs to inspect them
+        console.log("Valid Track URIs:", validTrackURIs);
+
+        // Check if there are valid track URIs
+        if (validTrackURIs.length > 0) {
+          // Add the valid track URIs to the playlist
+          const response = await fetch(
+            `https://api.spotify.com/v1/playlists/${playlistId}/tracks`,
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${accessToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                uris: validTrackURIs,
+              }),
+            }
+          );
+
+          if (response.ok) {
+            console.log("Tracks added to the playlist successfully!");
+          } else {
+            console.error(
+              "Failed to add tracks to the playlist. Status:",
+              response.status
+            );
           }
-        );
-
-        const result = await response.json();
-        return result.uris.length; // Return the count of songs successfully added
+        } else {
+          console.warn("No valid track URIs to add to the playlist.");
+        }
       }
 
       // Function to generate a random track URI (simplified)
@@ -184,11 +269,11 @@
         .split("&")[0]
         .split("=")[1];
       if (accessToken) {
-        // Token is present, user is authenticated
+        // Token is present, the user is authenticated
         // You can store the access token for future API requests
         console.log("Authenticated with access token:", accessToken);
       } else {
-        // Token is not present, redirect user to Spotify authentication
+        // Token is not present, redirect the user to Spotify authentication
         authenticateSpotify();
       }
     </script>
