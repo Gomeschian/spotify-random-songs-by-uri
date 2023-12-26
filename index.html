@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Spotify Random Songs App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+        }
+
+        #feedback {
+            margin-top: 20px;
+            padding: 10px;
+            border: 1px solid #ccc;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Spotify Random Songs App</h1>
+    <button onclick="addRandomSongs()">Add 100 Random Songs</button>
+    <div id="feedback"></div>
+
+    <script>
+        // Spotify Web API credentials
+        const clientId = '4dfa4cec758c4d7099933e46e3f097b8'; // Replace with your Spotify API client ID
+        const redirectUri = 'http://localhost:3000/callback'; // Replace with your Spotify API redirect URI
+        const scopes = 'playlist-modify-public playlist-modify-private';
+
+        // Playlist information
+        const playlistName = 'Random URI Songs';
+        let playlistId;
+
+        // Function to authenticate with Spotify
+        function authenticateSpotify() {
+            const authUrl = `https://accounts.spotify.com/authorize?client_id=${clientId}&redirect_uri=${redirectUri}&scope=${encodeURIComponent(scopes)}&response_type=token&show_dialog=true`;
+            window.location.replace(authUrl);
+        }
+
+        // Function to add 100 random songs
+        async function addRandomSongs() {
+            try {
+                // Create or retrieve the playlist
+                playlistId = await createOrGetPlaylist(playlistName);
+
+                // Add 100 random songs to the playlist
+                const songsAdded = await addSongsToPlaylist(playlistId, 100);
+
+                // Display feedback to the user
+                displayFeedback(`Successfully added ${songsAdded} songs to the playlist!`);
+            } catch (error) {
+                console.error('Error adding random songs:', error);
+                displayFeedback('Error adding random songs. Please try again.', true);
+            }
+        }
+
+        // Function to create or get the playlist
+        async function createOrGetPlaylist(name) {
+            // Check if the playlist already exists
+            const existingPlaylist = await getPlaylistByName(name);
+            if (existingPlaylist) {
+                return existingPlaylist.id;
+            }
+
+            // Playlist doesn't exist, create a new one
+            const newPlaylist = await createPlaylist(name);
+            return newPlaylist.id;
+        }
+
+        // Function to get a playlist by name
+        async function getPlaylistByName(name) {
+            const response = await fetch(`https://api.spotify.com/v1/me/playlists?limit=50`, {
+                headers: {
+                    'Authorization': `Bearer ${accessToken}`
+                }
+            });
+
+            const playlists = await response.json();
+            const playlist = playlists.items.find(item => item.name === name);
+            return playlist;
+        }
+
+        // Function to create a new playlist
+        async function createPlaylist(name) {
+            const response = await fetch(`https://api.spotify.com/v1/me/playlists`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    name: name,
+                    public: false // Set to true if you want the playlist to be public
+                })
+            });
+
+            const newPlaylist = await response.json();
+            return newPlaylist;
+        }
+
+        // Function to add songs to the playlist
+        async function addSongsToPlaylist(playlistId, count) {
+            // Generate an array of 100 random track URIs (simplified)
+            const randomTrackURIs = Array.from({ length: count }, generateRandomTrackURI);
+
+            // Add the random track URIs to the playlist
+            const response = await fetch(`https://api.spotify.com/v1/playlists/${playlistId}/tracks`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${accessToken}`
+                },
+                body: JSON.stringify({
+                    uris: randomTrackURIs
+                })
+            });
+
+            const result = await response.json();
+            return result.uris.length; // Return the count of songs successfully added
+        }
+
+        // Function to generate a random track URI (simplified)
+        function generateRandomTrackURI() {
+            const characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+            const uri = 'spotify:track:' + Array.from({ length: 22 }, () => characters[Math.floor(Math.random() * characters.length)]).join('');
+            return uri;
+        }
+
+        // Function to display feedback to the user
+        function displayFeedback(message, isError = false) {
+            const feedbackDiv = document.getElementById('feedback');
+            feedbackDiv.textContent = message;
+            feedbackDiv.style.color = isError ? 'red' : 'green';
+            feedbackDiv.style.display = 'block';
+
+            // Hide feedback after 5 seconds
+            setTimeout(() => {
+                feedbackDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Check if the access token is present in the URL (callback from Spotify authentication)
+        const accessToken = window.location.hash.substring(1).split('&')[0].split('=')[1];
+        if (accessToken) {
+            // Token is present, user is authenticated
+            // You can store the access token for future API requests
+            console.log('Authenticated with access token:', accessToken);
+        } else {
+            // Token is not present, redirect user to Spotify authentication
+            authenticateSpotify();
+        }
+    </script>
+</body>
+</html>
